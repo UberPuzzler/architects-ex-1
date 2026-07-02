@@ -357,6 +357,46 @@ for step in range(max_steps):
     
     # TODO: Implement the training step
     
+    # 1. עדכון קצב הלמידה
+    lr = get_lr(step)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
+    # 2. חישוב Validation Loss (אחת ל-20 צעדים)
+    if step % 20 == 0 or last_step:
+        model.eval()
+        val_loader.reset()
+        val_loss_accum = 0.0
+        val_loss_steps = 20
+        with torch.no_grad():
+            for _ in range(val_loss_steps):
+                x, y = val_loader.next_batch()
+                x, y = x.to(device), y.to(device)
+                with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+                    logits, loss = model(x, y)
+                val_loss_accum += loss.detach()
+        if master_process:
+            print(f"step {step} | val loss: {val_loss_accum.item() / val_loss_steps:.4f}")
+
+    # 3. לולאת אימון וצבירת גרדיאנטים (Gradient Accumulation)
+    model.train()
+    optimizer.zero_grad()
+    loss_accum = 0.0
+    
+    for micro_step in range(grad_accum_steps):
+        x, y = train_loader.next_batch()
+        x, y = x.to(device), y.to(device)
+        
+        with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+            logits, loss = model(x, y)
+            
+        loss = loss / grad_accum_steps
+        loss_accum += loss.detach()
+        loss.backward()
+
+    # 4. חסימת גרדיאנטים ועדכון משקולות
+    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+    optimizer.step()
     
     if device_type == "cuda":
         torch.cuda.synchronize() # wait for the GPU to finish work
