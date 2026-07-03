@@ -344,28 +344,11 @@ def get_lr(it):
 optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate=max_lr, device_type=device_type)
 
 # create the log directory we will write checkpoints to and log to
-#log_dir = "log"
-#os.makedirs(log_dir, exist_ok=True)
-#log_file = os.path.join(log_dir, f"log.txt")
-#with open(log_file, "w") as f: # open for writing to clear the file
-#    pass
-
-#----------------
-# Persisten storage
-import os
-from torch.utils.tensorboard import SummaryWriter
-
-# Use the mounted volume path if it exists; fallback to local "log" if running locally
-log_dir = "/mnt/data/log" if os.path.exists("/mnt/data") else "log"
+log_dir = "log"
 os.makedirs(log_dir, exist_ok=True)
-
-if master_process:
-    writer = SummaryWriter(log_dir=log_dir)
-
 log_file = os.path.join(log_dir, f"log.txt")
-with open(log_file, "w") as f:
+with open(log_file, "w") as f: # open for writing to clear the file
     pass
-# -------------------------
 
 for step in range(max_steps):
     t0 = time.time()
@@ -393,15 +376,7 @@ for step in range(max_steps):
                     logits, loss = model(x, y)
                 val_loss_accum += loss.detach()
         if master_process:
-            #print(f"step {step} | val loss: {val_loss_accum.item() / val_loss_steps:.4f}")
-            val_loss = val_loss_accum.item() / val_loss_steps
-            print(f"step {step} | val loss: {val_loss:.4f}", flush=True)
-            # TensorBoard
-            writer.add_scalar("Loss/val", val_loss, step)
-    
-
-        
-        
+            print(f"step {step} | val loss: {val_loss_accum.item() / val_loss_steps:.4f}")
 
     # 3. לולאת אימון וצבירת גרדיאנטים (Gradient Accumulation)
     model.train()
@@ -436,12 +411,5 @@ for step in range(max_steps):
         with open(log_file, "a") as f:
             f.write(f"{step} train {loss_accum.item():.6f}\n")
 
-        writer.add_scalar("Loss/train", loss_accum.item(), step)
-        writer.add_scalar("Charts/learning_rate", lr, step)
-        writer.add_scalar("Charts/throughput_tokens_per_sec", tokens_per_sec, step)
-
-if master_process:
-    writer.close()
-    
 if ddp:
     destroy_process_group()
