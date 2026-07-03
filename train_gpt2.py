@@ -304,14 +304,14 @@ if torch.cuda.is_available():
 
 enc = tiktoken.get_encoding("gpt2")
 
-total_batch_size = 65536#524288 # 2**19, ~0.5M, in number of tokens
+#total_batch_size = 65536#524288 # 2**19, ~0.5M, in number of tokens
 B = 4 # micro batch size
 T = 64 # sequence length
-assert total_batch_size % (B * T * ddp_world_size) == 0, "make sure total_batch_size is divisible by B * T * ddp_world_size"
-grad_accum_steps = total_batch_size // (B * T * ddp_world_size)
-if master_process:
-    print(f"total desired batch size: {total_batch_size}")
-    print(f"=> calculated gradient accumulation steps: {grad_accum_steps}")
+#assert total_batch_size % (B * T * ddp_world_size) == 0, "make sure total_batch_size is divisible by B * T * ddp_world_size"
+#grad_accum_steps = total_batch_size // (B * T * ddp_world_size)
+#if master_process:
+#    print(f"total desired batch size: {total_batch_size}")
+#    print(f"=> calculated gradient accumulation steps: {grad_accum_steps}")
 
 train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="train")
 val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val")
@@ -404,12 +404,12 @@ for step in range(max_steps):
     # Print loss and token throughput
     t1 = time.time()
     dt = t1 - t0 # time difference in seconds
-    tokens_processed = train_loader.B * train_loader.T * grad_accum_steps * ddp_world_size
+    tokens_processed = train_loader.B * train_loader.T *ddp_world_size
     tokens_per_sec = tokens_processed / dt
     if master_process:
-        print(f"step {step:5d} | loss: {loss_accum.item():.6f} | lr {lr:.4e} | norm: {norm:.4f} | dt: {dt*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}", flush=True)
+        print(f"step {step:5d} | loss: {loss.item():.6f} | lr {lr:.4e} | norm: {norm:.4f} | dt: {dt*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}", flush=True)
         with open(log_file, "a") as f:
-            f.write(f"{step} train {loss_accum.item():.6f}\n")
+            f.write(f"{step} train {loss.item():.6f}\n")
 
 if ddp:
     destroy_process_group()
