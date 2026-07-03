@@ -305,8 +305,8 @@ if torch.cuda.is_available():
 enc = tiktoken.get_encoding("gpt2")
 
 #total_batch_size = 65536#524288 # 2**19, ~0.5M, in number of tokens
-B = 4 # micro batch size
-T = 64 # sequence length
+B = 16 # micro batch size
+T = 1024 # sequence length
 #assert total_batch_size % (B * T * ddp_world_size) == 0, "make sure total_batch_size is divisible by B * T * ddp_world_size"
 #grad_accum_steps = total_batch_size // (B * T * ddp_world_size)
 #if master_process:
@@ -325,7 +325,7 @@ model.to(device)
 max_lr = 6e-4
 min_lr = max_lr * 0.1
 warmup_steps = 715
-max_steps = 100 # 19,073 steps is ~1 epoch, if data is 10B tokens and batch size 0.5M tokens
+max_steps = 500 # 19,073 steps is ~1 epoch, if data is 10B tokens and batch size 0.5M tokens
 
 def get_lr(it):
     # 1) linear warmup for warmup_iters steps
