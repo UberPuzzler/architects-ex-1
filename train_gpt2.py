@@ -381,18 +381,18 @@ for step in range(max_steps):
     # 3. לולאת אימון וצבירת גרדיאנטים (Gradient Accumulation)
     model.train()
     optimizer.zero_grad()
-    loss_accum = 0.0
+    #loss_accum = 0.0
     
-    for micro_step in range(grad_accum_steps):
-        x, y = train_loader.next_batch()
-        x, y = x.to(device), y.to(device)
+    #for micro_step in range(grad_accum_steps):
+    x, y = train_loader.next_batch()
+    x, y = x.to(device), y.to(device)
         
-        with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
-            logits, loss = model(x, y)
+    with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+        logits, loss = model(x, y)
             
-        loss = loss / grad_accum_steps
-        loss_accum += loss.detach()
-        loss.backward()
+    #    loss = loss / grad_accum_steps
+    #    loss_accum += loss.detach()
+    loss.backward()
 
     # 4. חסימת גרדיאנטים ועדכון משקולות
     norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
