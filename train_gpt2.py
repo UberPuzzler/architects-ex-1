@@ -35,10 +35,11 @@ class CausalSelfAttention(nn.Module):
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-        att = F.softmax(att, dim=-1)
-        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        #att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+        #att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+        #att = F.softmax(att, dim=-1)
+        #y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        y = F.scaled_dot_product_attention(q, k, v, is_causal=True) # flash attention
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
         # output projection
         y = self.c_proj(y)
@@ -305,7 +306,7 @@ if torch.cuda.is_available():
 enc = tiktoken.get_encoding("gpt2")
 
 #total_batch_size = 65536#524288 # 2**19, ~0.5M, in number of tokens
-B = 16 # micro batch size
+B = 32 # micro batch size
 T = 1024 # sequence length
 #assert total_batch_size % (B * T * ddp_world_size) == 0, "make sure total_batch_size is divisible by B * T * ddp_world_size"
 #grad_accum_steps = total_batch_size // (B * T * ddp_world_size)
