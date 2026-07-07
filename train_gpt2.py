@@ -306,7 +306,7 @@ if torch.cuda.is_available():
 enc = tiktoken.get_encoding("gpt2")
 
 #total_batch_size = 65536#524288 # 2**19, ~0.5M, in number of tokens
-B = 32 # micro batch size
+B = 64 # micro batch size
 T = 1024 # sequence length
 #assert total_batch_size % (B * T * ddp_world_size) == 0, "make sure total_batch_size is divisible by B * T * ddp_world_size"
 #grad_accum_steps = total_batch_size // (B * T * ddp_world_size)
@@ -324,10 +324,15 @@ model = GPT(GPTConfig(vocab_size=50304))
 # model = GPT.from_pretrained("gpt2") # or init from OpenAI GPT-2
 model.to(device)
 model = torch.compile(model)
+
+if ddp:
+    model = DDP(model, device_ids=[ddp_local_rank])
+raw_model = model.module if ddp else model
+
 max_lr = 6e-4
 min_lr = max_lr * 0.1
 warmup_steps = 715
-max_steps = 1000 # 19,073 steps is ~1 epoch, if data is 10B tokens and batch size 0.5M tokens
+max_steps = 5000 # 19,073 steps is ~1 epoch, if data is 10B tokens and batch size 0.5M tokens
 
 def get_lr(it):
     # 1) linear warmup for warmup_iters steps
@@ -343,7 +348,7 @@ def get_lr(it):
     return min_lr + coeff * (max_lr - min_lr)
 
 # optimize!
-optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate=max_lr, device_type=device_type)
+optimizer = raw_model.configure_optimizers(weight_decay=0.1, learning_rate=max_lr, device_type=device_type)
 
 # create the log directory we will write checkpoints to and log to
 log_dir = "log"
@@ -368,7 +373,7 @@ for step in range(max_steps):
     if step % 20 == 0 or last_step:
         model.eval()
         val_loader.reset()
-        val_loss_accum = 0.0
+        val_loss_accum = torch.tensor(0.0, device=device)
         val_loss_steps = 20
         with torch.no_grad():
             for _ in range(val_loss_steps):
@@ -377,6 +382,11 @@ for step in range(max_steps):
                 with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
                     logits, loss = model(x, y)
                 val_loss_accum += loss.detach()
+
+        if ddp:
+            dist.all_reduce(val_loss_accum, op=dist.ReduceOp.SUM)
+            val_loss_accum /= ddp_world_size
+            
         if master_process:
             print(f"step {step} | val loss: {val_loss_accum.item() / val_loss_steps:.4f}")
 
@@ -395,6 +405,11 @@ for step in range(max_steps):
     #    loss = loss / grad_accum_steps
     #    loss_accum += loss.detach()
     loss.backward()
+
+    loss_accum = loss.detach()
+    if ddp:
+        dist.all_reduce(loss_accum, op=dist.ReduceOp.SUM)
+        loss_accum /= ddp_world_size
 
     # 4. חסימת גרדיאנטים ועדכון משקולות
     norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
