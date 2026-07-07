@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from hf_checkpoint import save_and_upload_checkpoint
 
 # -----------------------------------------------------------------------------
 
@@ -388,8 +389,15 @@ for step in range(max_steps):
             val_loss_accum /= ddp_world_size
             
         if master_process:
-            print(f"step {step} | val loss: {val_loss_accum.item() / val_loss_steps:.4f}")
-
+            val_loss = val_loss_accum.item() / val_loss_steps
+            print(f"step {step} | val loss: {val_loss:.4f}")
+            
+            # Checkpoint saving and HF upload logic
+            if (step > 0 and step % 1000 == 0) or last_step:
+                checkpoint_dir = "/mnt/models/gpt2_run"
+                os.makedirs(checkpoint_dir, exist_ok=True)
+                save_and_upload_checkpoint(raw_model, step, val_loss, checkpoint_dir)
+                
     # 3. לולאת אימון וצבירת גרדיאנטים (Gradient Accumulation)
     model.train()
     optimizer.zero_grad()
